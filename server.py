@@ -59,22 +59,27 @@ def encryptAES(msg,key,iv):
 
 def decryptAES(msg,key,iv):
     status('AES decrypting message...')
+    status('MSG:%s\nKEY:%s\nIV:%s\n'%(msg,key,iv))
     #status(iv)
     #status(key)
     aes = AES.new(key, AES.MODE_CBC, iv)
     cleartext = aes.decrypt(msg)
-    return cleartext    
+    return cleartext
 
 @app.route("/request",methods=["POST","GET"])
 def processRequest():
     back = ""
     if (request.method == 'POST'):
-        status("Message received. Parsing...")
+        print(request.data)
+        status("Message received.")
         try:
             payloadxml = xmltodict.parse(request.data)
+            if(payloadxml['request']['signature']==None):
+                signature = ''
+            else:
+                signature = base64.b64decode(payloadxml['request']['signature'])
             enckey = base64.b64decode(payloadxml['request']['enckey'])
             message = base64.b64decode(payloadxml['request']['message'])
-            signature = base64.b64decode(payloadxml['request']['signature'])
         except Exception as e:
             status('Exception at xml parsing')
             raise e
@@ -113,4 +118,4 @@ def initialiseRsa():
     return (clientpubkey,privkey,pubkey)
 
 (clientpubkey,privkey,pubkey) = initialiseRsa()
-app.run(host='0.0.0.0', port=PORT_NUMBER, debug=True)
+app.run(host='0.0.0.0', port=PORT_NUMBER, debug=True,ssl_context=('ssl/fullchain3.pem','ssl/privkey3.pem'))
