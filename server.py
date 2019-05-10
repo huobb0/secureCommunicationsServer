@@ -41,6 +41,9 @@ def decryptRSA(msg):
 def verifySig(msg,signature,pubkey):
     status('Verifying...')
     try:
+        print("msg: %s"%msg)
+        print("signature: %s"%signature)
+        print("pubkey: %s"%pubkey)
         rsa.verify(msg,signature,pubkey)
         status('Verified.')
         return True
@@ -48,12 +51,36 @@ def verifySig(msg,signature,pubkey):
         status('! Verification error')
         return False
 
+def unpad_pkcs7(b):
+    """Strips PKCS#7 padding from the end of the given byte array and returns
+    the stripped byte array.
+
+    Parameters:
+        b (bytes): the input array
+
+    Returns:
+        bytes: the input array without the trailing PKCS#7 padding
+    """
+    status('pkcs7 unpad %s'%b)
+    back = b[:-b[len(b)-1]]
+    status('unpadded %s'%back)
+    return back
+
+def pad_pkcs7(b, block_size=16):
+    """Applies PKCS#7 padding to the end of the given byte array such that its
+    length becomes divisible with the given block size, in bytes.
+    Parameters:
+        b (bytes): the input array
+        block_size (int): the block size to pad to
+    """
+    extra = block_size - (len(b) % block_size)
+    padding = bytes([extra]) * extra
+    return b + padding
+
 def encryptAES(msg,key,iv):
     status('AES Encrypting message...')
     aes = AES.new(key, AES.MODE_CBC, iv)
-    extra = len(msg) % 16
-    if extra > 0:
-        msg = msg + (b' ' * (16 - extra))
+    msg = pad_pkcs7(msg)
     ciphertext = aes.encrypt(msg)
     return ciphertext
 
@@ -78,8 +105,8 @@ def processRequest():
                 signature = ''
             else:
                 signature = base64.b64decode(payloadxml['request']['signature'])
-            enckey = base64.b64decode(payloadxml['request']['enckey'])
-            message = base64.b64decode(payloadxml['request']['message'])
+            enckey = base64.b64decode(payloadxml['request']['enckey'].replace('\n',''))
+            message = base64.b64decode(payloadxml['request']['message'].replace('\n',''))
         except Exception as e:
             status('Exception at xml parsing')
             raise e
@@ -88,10 +115,11 @@ def processRequest():
         status(aesKeyData)
         AES_KEY = aesKeyData[0:32]
         AES_IV = aesKeyData[33:]
-        plainmsg = decryptAES(message,AES_KEY,AES_IV)
+        plainmsg = unpad_pkcs7(decryptAES(message,AES_KEY,AES_IV))
         status('Message decrypted, text: %s'%plainmsg)
         if (verifySig(message,signature,clientpubkey)):
             msg = b'Simon says %s'%plainmsg
+            #msg = plainmsg
             cipmsg = encryptAES(msg,AES_KEY,AES_IV)
             back += RESPTEMPLATE%base64.b64encode(cipmsg).decode('ascii')
         else:
