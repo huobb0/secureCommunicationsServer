@@ -8,9 +8,10 @@ PRIVATE_KEY_FILE = 'private.pem'
 PUBLIC_KEY_FILE = 'public.pem'
 SERVER_PUBLIC_KEY_FILE = 'server_pub.pem'
 AES_KEY = b'00112233445566778899aabbccddeeff'
-AES_IV  = b'0000000000000000'
+AES_IV  = b'1111111111111111'
 
-HOST = '127.0.0.1'
+#HOST = 'https://singleframesecurity.net'
+HOST = 'http://127.0.0.1'
 PORT = 9999
 #PORT = 9987
 WS = 'request'
@@ -19,6 +20,30 @@ REQTEMPLATE = '''<request><enckey>%s</enckey><message>%s</message><signature>%s<
 
 def status(msg):
     print("[*] %s"%msg)
+
+def pad_pkcs7(b, block_size=16):
+    """Applies PKCS#7 padding to the end of the given byte array such that its
+    length becomes divisible with the given block size, in bytes.
+    Parameters:
+        b (bytes): the input array
+        block_size (int): the block size to pad to
+    """
+    extra = block_size - (len(b) % block_size)
+    padding = bytes([extra]) * extra
+    return b + padding
+
+def unpad_pkcs7(b):
+    """Strips PKCS#7 padding from the end of the given byte array and returns
+    the stripped byte array.
+    Parameters:
+        b (bytes): the input array
+    Returns:
+        bytes: the input array without the trailing PKCS#7 padding
+    """
+    status('pkcs7 unpad %s'%b)
+    back = b[:-b[len(b)-1]]
+    status('unpadded %s'%back)
+    return back
 
 def initialiseRsa():
     status('Initialising RSA...')
@@ -36,9 +61,9 @@ def initialiseRsa():
 
     return (serverpubkey,privkey,pubkey)
 
-def signMessage(msg,pubkey):
+def signMessage(msg,key):
     status('Signing message...')
-    return rsa.sign(msg,pubkey,'SHA-1')
+    return rsa.sign(msg,key,'SHA-1')
 
 def encryptRSA(msg,pubkey):
     status('RSA encrypting message...')
@@ -60,7 +85,9 @@ def decryptAES(msg,key,iv):
 
 (serverpubkey,privkey,pubkey) = initialiseRsa()
 
-message = b'The answer is no' 
+#message = b'The answer is noThe answer is no'
+message = b'0123456789ab'
+message = pad_pkcs7(message) 
 encmessage = encryptAES(message)
 enckey = encryptRSA(b'%s|%s'%(AES_KEY,AES_IV),serverpubkey)
 signature = signMessage(encmessage,privkey)
@@ -69,8 +96,8 @@ xmltext = REQTEMPLATE%(base64.b64encode(enckey).decode('ascii'),base64.b64encode
 xmldoc = minidom.parseString(xmltext)
 print(xmldoc.toprettyxml())
 
-status('Sending message to http://%s:%s/%s...'%(HOST,PORT,WS))
-backmsg = requests.post("http://%s:%s/%s"%(HOST,PORT,WS), data=xmltext).text
+status('Sending message to %s:%s/%s...'%(HOST,PORT,WS))
+backmsg = requests.post("%s:%s/%s"%(HOST,PORT,WS), data=xmltext).text
 back = xmltodict.parse(backmsg)['response']
 backplain = decryptAES(base64.b64decode(back),AES_KEY,AES_IV)
 status ('Returned message is: %s'%backplain.decode('ascii'))
